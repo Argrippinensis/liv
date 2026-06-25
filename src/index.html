@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Local Intelligence Vault</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #f5f5f5; font-family: system-ui, sans-serif; }
+    #tool-frame { width: 100%; height: 100%; border: none; }
+
+    #update-banner {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #fef3c7; border-top: 3px solid #f59e0b; color: #78350f;
+      padding: 10px 20px; font-size: 13px;
+      display: none; align-items: center; gap: 16px; z-index: 9999;
+    }
+    #update-banner .banner-text { flex: 1; }
+    #update-banner .banner-title { font-weight: 600; margin-bottom: 2px; }
+    #update-banner .banner-hint { font-size: 11px; color: #92400e; opacity: 0.8; }
+    #update-banner .banner-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    #update-banner .btn-update {
+      background: #d97706; color: #fff; border: none;
+      padding: 7px 16px; border-radius: 5px; cursor: pointer; font-weight: 600; font-size: 13px;
+    }
+    #update-banner .btn-update:hover { background: #b45309; }
+    #update-banner .btn-later {
+      background: transparent; color: #92400e; border: 1px solid #d97706;
+      padding: 7px 14px; border-radius: 5px; cursor: pointer; font-size: 13px;
+    }
+    #update-banner .btn-later:hover { background: #fde68a; }
+
+    #forced-update-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.82); z-index: 99999;
+      align-items: center; justify-content: center;
+    }
+    #forced-update-overlay .dialog {
+      background: #fff; padding: 44px 48px; border-radius: 14px;
+      max-width: 460px; width: 90%; text-align: center;
+    }
+    #forced-update-overlay h2 { font-size: 20px; font-weight: 700; margin-bottom: 10px; color: #111; }
+    #forced-update-overlay p { color: #555; margin-bottom: 28px; line-height: 1.55; font-size: 14px; }
+    #forced-update-overlay .dialog-actions { display: flex; gap: 12px; justify-content: center; }
+    #forced-update-overlay .btn-force-update {
+      background: #1a3a5c; color: #fff; border: none;
+      padding: 11px 28px; border-radius: 7px; cursor: pointer; font-weight: 600; font-size: 14px;
+    }
+    #forced-update-overlay .btn-force-update:hover { background: #14304e; }
+    #forced-update-overlay .btn-force-update:disabled { opacity: 0.6; cursor: default; }
+    #forced-update-overlay .btn-quit {
+      background: transparent; color: #dc2626; border: 1px solid #dc2626;
+      padding: 11px 20px; border-radius: 7px; cursor: pointer; font-size: 14px;
+    }
+    #progress-wrap { display: none; margin-bottom: 20px; }
+    #progress-label { font-size: 13px; color: #555; margin-bottom: 8px; }
+    #progress-bar-bg { background: #e5e7eb; border-radius: 6px; height: 8px; overflow: hidden; }
+    #progress-bar-fill { background: #1a3a5c; height: 100%; width: 0%; transition: width 0.3s; border-radius: 6px; }
+    #download-error-msg { display: none; color: #dc2626; font-size: 13px; margin-bottom: 16px; }
+    #install-msg { display: none; color: #16a34a; font-size: 13px; margin-bottom: 16px; font-weight: 600; }
+
+    #update-check-btn {
+      position: fixed; top: 8px; right: 8px; z-index: 9998;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(4px);
+      padding: 6px 12px; border-radius: 6px; display: flex; gap: 8px; align-items: center;
+    }
+    #version-label { color: rgba(255,255,255,0.7); font-size: 11px; font-family: system-ui, sans-serif; }
+    #btn-check-updates {
+      background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.2);
+      padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-family: system-ui, sans-serif;
+    }
+    #sysstats {
+      position: fixed; bottom: 8px; right: 8px; z-index: 999;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(4px);
+      color: rgba(255,255,255,0.7); font-size: 10px; padding: 6px 10px;
+      border-radius: 6px; font-family: monospace; line-height: 1.4; pointer-events: none;
+    }
+
+    #update-status-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.65); z-index: 99998;
+      align-items: center; justify-content: center;
+    }
+    #update-status-overlay .dialog {
+      background: #fff; padding: 36px 40px; border-radius: 12px;
+      max-width: 420px; width: 90%; text-align: center;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.25);
+    }
+    #update-status-overlay h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; color: #111; }
+    #update-status-overlay p { color: #555; margin-bottom: 20px; font-size: 13px; line-height: 1.5; }
+    #update-status-overlay .status-icon { font-size: 44px; margin-bottom: 8px; }
+    .btn-force-update {
+      background: #1a3a5c; color: #fff; border: none;
+      padding: 11px 28px; border-radius: 7px; cursor: pointer; font-weight: 600; font-size: 14px;
+    }
+    .btn-force-update:hover { background: #14304e; }
+    .btn-force-update:disabled { opacity: 0.6; cursor: default; }
+    .btn-close-dialog {
+      background: transparent; color: #555; border: 1px solid #ccc;
+      padding: 11px 28px; border-radius: 7px; cursor: pointer; font-size: 14px;
+    }
+    #status-progress-wrap { display: none; margin-bottom: 20px; }
+    #status-progress-label { font-size: 12px; color: #555; margin-bottom: 6px; }
+    #status-progress-bar-bg { background: #e5e7eb; border-radius: 6px; height: 8px; overflow: hidden; }
+    #status-progress-bar-fill { background: #1a3a5c; height: 100%; width: 0%; transition: width 0.3s; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <iframe id="tool-frame" src="vault.html" allow="clipboard-read; clipboard-write"></iframe>
+
+  <div id="update-banner">
+    <div class="banner-text">
+      <div class="banner-title" id="banner-title"></div>
+      <div class="banner-hint">Diese Meldung ist nur 3x wegklickbar, danach wird das Update durchgefuhrt.</div>
+    </div>
+    <div class="banner-actions">
+      <button class="btn-later" id="btn-later" onclick="handleLater()">Spater</button>
+      <button class="btn-update" onclick="handleUpdate()">Jetzt aktualisieren</button>
+    </div>
+  </div>
+
+  <div id="forced-update-overlay">
+    <div class="dialog">
+      <h2>Update erforderlich</h2>
+      <p id="forced-text"></p>
+      <div id="progress-wrap">
+        <div id="progress-label">Download... 0%</div>
+        <div id="progress-bar-bg"><div id="progress-bar-fill"></div></div>
+      </div>
+      <div id="download-error-msg">Download fehlgeschlagen — bitte erneut versuchen.</div>
+      <div id="install-msg">Installation lauft, App wird neu gestartet...</div>
+      <div class="dialog-actions" id="dialog-actions">
+        <button class="btn-force-update" id="btn-force-update" onclick="handleForceUpdate()">Jetzt aktualisieren</button>
+        <button class="btn-quit" onclick="handleQuit()">Programm schliessen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="update-status-overlay">
+    <div class="dialog">
+      <div class="status-icon" id="status-icon"></div>
+      <h2 id="status-title">Suche nach Updates...</h2>
+      <p id="status-message">Bitte warten.</p>
+      <div id="status-progress-wrap">
+        <div id="status-progress-label">Download... 0%</div>
+        <div id="status-progress-bar-bg"><div id="status-progress-bar-fill"></div></div>
+      </div>
+      <div id="status-error-msg" style="display:none;color:#dc2626;font-size:12px;margin-bottom:14px">Download fehlgeschlagen.</div>
+      <div id="status-install-msg" style="display:none;color:#16a34a;font-size:13px;margin-bottom:14px;font-weight:600">Installation lauft, App wird neu gestartet...</div>
+      <div id="status-actions" style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button class="btn-force-update" id="btn-status-update" onclick="handleStatusUpdate()" style="display:none">Jetzt aktualisieren</button>
+        <button class="btn-close-dialog" onclick="document.getElementById('update-status-overlay').style.display='none'">Schliessen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="update-check-btn">
+    <span id="version-label">...</span>
+    <button id="btn-check-updates" onclick="checkForUpdatesManually()">Updates</button>
+  </div>
+
+  <div id="sysstats">RAM — | CPU — | App — MB</div>
+
+  <script>
+    let pendingVersion = null;
+
+    if (window.electronAPI) {
+      window.electronAPI.getAppVersion().then(v => {
+        document.getElementById('version-label').textContent = 'v' + v;
+      }).catch(() => {
+        document.getElementById('version-label').textContent = 'v0.1.0';
+      });
+
+      setInterval(async () => {
+        try {
+          const s = await window.electronAPI.getSystemStats();
+          document.getElementById('sysstats').textContent =
+            'RAM ' + s.ram.used + '/' + s.ram.total + ' GB (' + s.ram.percent + '%) | CPU ' + s.cpu.cores + 'x | App ' + s.app.memory + ' MB';
+        } catch {}
+      }, 2000);
+
+      window.electronAPI.onUpdateAvailable(({ version, dismissCount }) => {
+        if (dismissCount >= 3) showForcedDialog(version);
+        else showBanner(version, dismissCount);
+      });
+
+      window.electronAPI.onDownloadProgress((percent) => {
+        document.getElementById('progress-wrap').style.display = 'block';
+        document.getElementById('progress-label').textContent = 'Download... ' + percent + '%';
+        document.getElementById('progress-bar-fill').style.width = percent + '%';
+        const so = document.getElementById('update-status-overlay');
+        if (so.style.display === 'flex') {
+          document.getElementById('status-progress-label').textContent = 'Download... ' + percent + '%';
+          document.getElementById('status-progress-bar-fill').style.width = percent + '%';
+        }
+      });
+
+      window.electronAPI.onUpdateDownloaded((version) => {
+        document.getElementById('progress-wrap').style.display = 'none';
+        document.getElementById('install-msg').style.display = 'block';
+        document.getElementById('dialog-actions').style.display = 'none';
+        document.getElementById('forced-update-overlay').style.display = 'flex';
+      });
+
+      window.electronAPI.onDownloadError(() => {
+        document.getElementById('download-error-msg').style.display = 'block';
+        const btn = document.getElementById('btn-force-update');
+        if (btn) { btn.disabled = false; btn.textContent = 'Erneut versuchen'; }
+        document.getElementById('dialog-actions').style.display = 'flex';
+        document.getElementById('forced-update-overlay').style.display = 'flex';
+      });
+    }
+
+    function showBanner(version, dismissCount) {
+      pendingVersion = version;
+      document.getElementById('banner-title').textContent = 'Neue Version ' + version + ' verfugbar';
+      document.getElementById('btn-later').textContent = 'Spater (' + (3 - dismissCount) + 'x)';
+      document.getElementById('update-banner').style.display = 'flex';
+    }
+
+    function showForcedDialog(version) {
+      pendingVersion = version;
+      document.getElementById('forced-text').textContent = 'Diese Version ist veraltet. Bitte aktualisieren auf Version ' + version + '.';
+      document.getElementById('forced-update-overlay').style.display = 'flex';
+    }
+
+    async function handleLater() {
+      if (!pendingVersion || !window.electronAPI) return;
+      const { dismissCount } = await window.electronAPI.dismissUpdate(pendingVersion);
+      document.getElementById('update-banner').style.display = 'none';
+      if (dismissCount >= 3) showForcedDialog(pendingVersion);
+    }
+
+    async function handleUpdate() {
+      document.getElementById('update-banner').style.display = 'none';
+      if (window.electronAPI) await window.electronAPI.startDownload();
+    }
+
+    async function handleForceUpdate() {
+      if (!window.electronAPI) return;
+      document.getElementById('btn-force-update').disabled = true;
+      document.getElementById('progress-wrap').style.display = 'block';
+      document.getElementById('download-error-msg').style.display = 'none';
+      await window.electronAPI.startDownload();
+    }
+
+    async function handleQuit() {
+      if (window.electronAPI) await window.electronAPI.quitApp();
+    }
+
+    async function checkForUpdatesManually() {
+      const overlay = document.getElementById('update-status-overlay');
+      overlay.style.display = 'flex';
+      document.getElementById('status-icon').textContent = '';
+      document.getElementById('status-title').textContent = 'Suche nach Updates...';
+      document.getElementById('status-message').textContent = 'Bitte warten.';
+      document.getElementById('btn-status-update').style.display = 'none';
+      document.getElementById('status-progress-wrap').style.display = 'none';
+      document.getElementById('status-error-msg').style.display = 'none';
+      document.getElementById('status-install-msg').style.display = 'none';
+      document.getElementById('status-actions').style.display = 'flex';
+
+      if (!window.electronAPI) {
+        document.getElementById('status-title').textContent = 'Nicht verfugbar';
+        document.getElementById('status-message').textContent = 'Update-Prufung nur in der Desktop-App verfugbar.';
+        return;
+      }
+
+      const result = await window.electronAPI.checkForUpdates();
+      if (result.updateAvailable) {
+        document.getElementById('status-title').textContent = 'Update verfugbar';
+        document.getElementById('status-message').textContent = 'Version ' + result.version + ' ist verfugbar (aktuell: ' + result.currentVersion + ').';
+        document.getElementById('btn-status-update').style.display = 'inline-block';
+        pendingVersion = result.version;
+      } else if (result.error) {
+        document.getElementById('status-title').textContent = 'Fehler';
+        document.getElementById('status-message').textContent = 'Update-Prufung fehlgeschlagen. Internetverbindung prufen.';
+      } else {
+        document.getElementById('status-title').textContent = 'Kein Update verfugbar';
+        document.getElementById('status-message').textContent = 'Sie verwenden die neueste Version (' + (result.currentVersion || '0.1.0') + ').';
+      }
+    }
+
+    async function handleStatusUpdate() {
+      if (!window.electronAPI) return;
+      document.getElementById('btn-status-update').disabled = true;
+      document.getElementById('status-progress-wrap').style.display = 'block';
+      await window.electronAPI.startDownload();
+    }
+  </script>
+</body>
+</html>

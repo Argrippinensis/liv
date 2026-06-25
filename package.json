@@ -1,0 +1,63 @@
+{
+  "name": "local-intelligence-vault",
+  "version": "0.1.0",
+  "description": "Local Intelligence Vault — Dokumente lokal durchsuchen, 100% offline",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder --win --mac --linux",
+    "release": "electron-builder --win --mac --linux --publish always"
+  },
+  "build": {
+    "appId": "eu.arcangeli.liv",
+    "productName": "Local Intelligence Vault",
+    "copyright": "Copyright © 2026 Alexander Arcangeli",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "assets/icon.png",
+      "artifactName": "Local-Intelligence-Vault-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true,
+      "createDesktopShortcut": true
+    },
+    "mac": {
+      "target": ["zip"],
+      "icon": "assets/icon.png",
+      "artifactName": "Local-Intelligence-Vault-${version}.${ext}",
+      "identity": null
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "assets/icon.png",
+      "artifactName": "Local-Intelligence-Vault-${version}.${ext}"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Argrippinensis",
+      "repo": "liv",
+      "private": false,
+      "releaseType": "release"
+    },
+    "forceCodeSigning": false
+  },
+  "dependencies": {
+    "electron-updater": "^6.0.0"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "author": {
+    "name": "Alexander Arcangeli",
+    "email": "alexander.arcangeli@yahoo.de"
+  }
+}

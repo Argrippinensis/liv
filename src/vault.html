@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Local Intelligence Vault</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net esm.sh blob:; connect-src cdn.jsdelivr.net esm.sh *.huggingface.co *.hf.co http://localhost:11434; style-src 'self' 'unsafe-inline'; worker-src blob: cdn.jsdelivr.net esm.sh; child-src blob:;">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{--navy:#1a3a5c;--navy-light:#2a5a8c;--navy-50:rgba(26,58,92,0.06);--border:#e5e5e5;--secondary:#666}
+*,::after,::before{box-sizing:border-box}
+body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#fff;color:#111;-webkit-font-smoothing:antialiased;margin:0}
+.nav-glass{position:fixed;top:0;left:0;right:0;height:56px;background:rgba(255,255,255,.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:.5px solid var(--border);z-index:9999;display:flex;align-items:center;padding:0 24px;gap:12px}
+.nav-logo{font-size:15px;font-weight:700;color:var(--navy);letter-spacing:-.02em}
+.nav-sep{color:var(--border);font-size:16px}
+.status-badge{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;letter-spacing:.04em;text-transform:uppercase}
+.status-badge.browser{background:#dcfce7;color:#166534}
+.status-badge.desktop{background:var(--navy-50);color:var(--navy)}
+.status-dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.vault-layout{display:grid;grid-template-columns:280px 1fr 300px;height:calc(100vh - 56px);margin-top:56px}
+@media(max-width:900px){.vault-layout{grid-template-columns:1fr;height:auto}.sources-panel{display:none}}
+.sidebar{border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.panel-header{padding:14px 16px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--secondary)}
+.upload-zone{margin:12px;border:1.5px dashed var(--border);border-radius:10px;padding:18px 12px;text-align:center;cursor:pointer;transition:all .18s;background:#fafafa}
+.upload-zone.drag,.upload-zone:hover{border-color:var(--navy);background:var(--navy-50)}
+.upload-zone input{display:none}
+.upload-zone svg{margin:0 auto 6px;color:var(--secondary)}
+.upload-zone p{font-size:12px;color:var(--secondary);margin:0;line-height:1.4}
+.upload-zone .privacy-note{font-size:10px;color:var(--secondary);opacity:.7;margin-top:4px;display:flex;align-items:center;justify-content:center;gap:4px}
+.btn-open-files{display:none;width:calc(100% - 24px);margin:12px 12px 0;background:var(--navy);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-family:inherit;font-weight:600;cursor:pointer;transition:background .18s;text-align:left;align-items:center;gap:8px}
+.btn-open-files:hover{background:var(--navy-light)}
+.ingest-bar{margin:0 12px 8px;font-size:11px;color:var(--secondary);display:none}
+.bar-track{height:3px;background:var(--border);border-radius:2px;margin-top:4px}
+.bar-fill{height:100%;background:var(--navy);border-radius:2px;transition:width .3s}
+.doc-list{flex:1;overflow-y:auto;padding:8px}
+.doc-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-size:12px;transition:background .12s}
+.doc-item:hover{background:var(--navy-50)}
+.doc-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:var(--navy-50);color:var(--navy);flex-shrink:0;font-size:10px;font-weight:700}
+.doc-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.doc-meta{font-size:10px;color:var(--secondary)}
+.doc-del{opacity:0;cursor:pointer;color:#ef4444;border:none;background:0 0;padding:2px 4px;border-radius:4px;transition:opacity .12s}
+.doc-item:hover .doc-del{opacity:1}
+.ollama-section{padding:12px;border-top:1px solid var(--border)}
+.ollama-status{font-size:12px;color:var(--secondary);display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.ollama-dot{width:7px;height:7px;border-radius:50%;background:var(--secondary);flex-shrink:0}
+.ollama-dot.ok{background:#16a34a}
+.ollama-dot.checking{background:#f59e0b;animation:pulse 1s infinite}
+.ollama-setup{font-size:11px;color:var(--secondary);margin-top:6px;line-height:1.5;display:none}
+.ollama-setup summary{cursor:pointer;font-weight:600;color:var(--navy);margin-bottom:4px;list-style:none}
+.ollama-setup summary::before{content:"+ "}
+.ollama-setup[open] summary::before{content:"- "}
+.ollama-setup ol{padding-left:14px;margin-top:4px}
+.ollama-setup li{margin-bottom:2px}
+.ollama-setup code{background:var(--navy-50);padding:1px 4px;border-radius:3px;font-size:10px}
+.llm-section{padding:12px;border-top:1px solid var(--border)}
+.btn-accent{background:var(--navy);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-family:inherit;font-weight:600;cursor:pointer;transition:background .18s;width:100%}
+.btn-accent:hover{background:var(--navy-light)}
+.btn-accent:disabled{opacity:.5;cursor:not-allowed}
+.llm-note{font-size:11px;color:var(--secondary);margin-top:6px;text-align:center;line-height:1.4}
+.chat-panel{display:flex;flex-direction:column;overflow:hidden;background:#fefefe}
+.chat-msgs{flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:16px}
+.msg-wrap{display:flex;gap:10px}
+.msg-wrap.user{flex-direction:row-reverse}
+.msg-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;align-self:flex-end}
+.msg-wrap.user .msg-avatar{background:var(--navy);color:#fff}
+.msg-wrap.assistant .msg-avatar{background:var(--navy-50);color:var(--navy)}
+.msg-bubble{max-width:75%;padding:12px 16px;border-radius:14px;font-size:13.5px;line-height:1.65;white-space:pre-wrap}
+.msg-wrap.user .msg-bubble{background:var(--navy);color:#fff;border-bottom-right-radius:4px}
+.msg-wrap.assistant .msg-bubble{background:#fff;border:1px solid var(--border);border-bottom-left-radius:4px;color:#111}
+.src-ref{display:inline;font-size:11px;font-weight:700;color:var(--navy);background:var(--navy-50);padding:1px 5px;border-radius:4px;margin-left:2px}
+.chat-input-row{border-top:1px solid var(--border);padding:16px;display:flex;gap:10px;background:#fff}
+.chat-input{flex:1;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-family:inherit;font-size:13.5px;resize:none;outline:0;transition:border-color .18s;min-height:42px;max-height:120px;line-height:1.5}
+.chat-input:focus{border-color:var(--navy)}
+.send-btn{background:var(--navy);color:#fff;border:none;border-radius:10px;width:42px;height:42px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .18s;flex-shrink:0}
+.send-btn:hover{background:var(--navy-light)}
+.send-btn:disabled{opacity:.4;cursor:not-allowed}
+.sources-panel{border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sources-list{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.src-card{border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px}
+.src-card-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.src-num{width:18px;height:18px;border-radius:50%;background:var(--navy);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.src-file{font-weight:600;color:var(--navy);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src-page{font-size:10px;color:var(--secondary)}
+.src-text{color:#444;line-height:1.5;font-size:11.5px}
+.src-score{margin-top:6px;font-size:10px;color:var(--secondary)}
+.onboarding-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:32px 24px}
+.onboarding-title{font-size:18px;font-weight:700;color:var(--navy);margin-bottom:6px;text-align:center}
+.onboarding-sub{font-size:13px;color:var(--secondary);text-align:center;margin-bottom:28px;line-height:1.5}
+.onboarding-steps{width:100%;max-width:360px;display:flex;flex-direction:column;gap:16px}
+.onboarding-step{display:flex;align-items:flex-start;gap:12px}
+.step-num{width:28px;height:28px;border-radius:50%;background:var(--navy);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.step-body{flex:1}
+.step-title{font-size:13px;font-weight:600;color:#111;margin-bottom:2px}
+.step-desc{font-size:12px;color:var(--secondary);line-height:1.4}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--secondary);text-align:center;padding:24px;gap:8px}
+.empty-state p{font-size:13px;margin:0}
+.empty-state small{font-size:11px;opacity:.7}
+#model-loading-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.96);z-index:88888;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+#model-loading-overlay .ml-icon{width:56px;height:56px;border:3px solid var(--navy-50);border-top-color:var(--navy);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#model-loading-overlay .ml-title{font-size:16px;font-weight:600;color:var(--navy)}
+#model-loading-overlay .ml-sub{font-size:13px;color:var(--secondary);text-align:center;max-width:320px;line-height:1.5}
+#model-loading-overlay .ml-bar-wrap{width:280px;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+#model-loading-overlay .ml-bar{height:100%;width:0%;background:var(--navy);border-radius:2px;transition:width .3s}
+#cdn-error-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);z-index:88889;align-items:center;justify-content:center;flex-direction:column;gap:16px;text-align:center;padding:40px}
+#cdn-error-overlay .ce-title{font-size:18px;font-weight:700;color:#dc2626}
+#cdn-error-overlay .ce-sub{font-size:14px;color:var(--secondary);max-width:340px;line-height:1.55}
+#cdn-error-overlay .btn-retry{background:var(--navy);color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-family:inherit;font-weight:600;cursor:pointer}
+.dots-wrap{display:flex;gap:4px;align-items:center;padding:4px 0}
+.dots-wrap span{width:6px;height:6px;background:var(--secondary);border-radius:50%;animation:bounce 1.2s infinite}
+.dots-wrap span:nth-child(2){animation-delay:.2s}
+.dots-wrap span:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,100%,80%{transform:translateY(0);opacity:.4}40%{transform:translateY(-6px);opacity:1}}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;z-index:99999;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:0 0}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<div id="model-loading-overlay">
+  <div class="ml-icon"></div>
+  <div class="ml-title">KI-Modell wird geladen...</div>
+  <div class="ml-sub">Einmalig ~25 MB. Danach funktioniert alles komplett ohne Internet.</div>
+  <div class="ml-bar-wrap"><div class="ml-bar" id="mlBar"></div></div>
+</div>
+
+<div id="cdn-error-overlay">
+  <svg width="48" height="48" fill="none" stroke="#dc2626" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <div class="ce-title">Verbindung fehlgeschlagen</div>
+  <div class="ce-sub">Das KI-Modell konnte nicht geladen werden. Bitte Internetverbindung prüfen und erneut versuchen.</div>
+  <button class="btn-retry" onclick="location.reload()">Erneut versuchen</button>
+</div>
+
+<nav class="nav-glass">
+  <span class="nav-logo">Local Intelligence Vault</span>
+  <span title="Zero Data Leakage" style="display:flex;align-items:center;margin-left:2px;flex-shrink:0">
+    <svg width="16" height="18" viewBox="0 0 24 26" fill="#004b23"><path d="M12 1L3 5v8c0 5 3.8 9.5 9 11 5.2-1.5 9-6 9-11V5L12 1z"/></svg>
+  </span>
+  <div id="statusBadge" class="status-badge browser">
+    <span class="status-dot"></span>
+    <span id="statusText">BROWSER MODE</span>
+  </div>
+</nav>
+
+<div class="vault-layout">
+  <aside class="sidebar">
+    <div class="panel-header">Vault — Dokumente</div>
+
+    <button class="btn-open-files" id="btnOpenFiles" onclick="openNativeFiles()">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="display:inline;vertical-align:middle;margin-right:6px"><path stroke-linecap="round" d="M3 7h4l2-3h6l2 3h4a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/></svg>
+      Dateien öffnen
+    </button>
+
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" id="fileInput" accept=".pdf,.txt,.md" multiple>
+      <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.338-2.32 4.875 4.875 0 0 1 2.572 9.095H6.75"/></svg>
+      <p>PDF, TXT oder MD<br><strong>hochladen oder reinziehen</strong></p>
+      <div class="privacy-note">
+        <svg width="10" height="11" viewBox="0 0 24 26" fill="#004b23"><path d="M12 1L3 5v8c0 5 3.8 9.5 9 11 5.2-1.5 9-6 9-11V5L12 1z"/></svg>
+        Deine Dateien verlassen dieses Gerät nie
+      </div>
+    </div>
+
+    <div class="ingest-bar" id="ingestBar">
+      <span id="ingestLabel">Indexiere...</span>
+      <div class="bar-track"><div class="bar-fill" id="barFill" style="width:0%"></div></div>
+    </div>
+
+    <div class="doc-list" id="docList"></div>
+
+    <div class="ollama-section" id="ollamaSection" style="display:none">
+      <div class="ollama-status">
+        <div class="ollama-dot checking" id="ollamaDot"></div>
+        <span id="ollamaStatusText">Prüfe Ollama...</span>
+      </div>
+      <details class="ollama-setup" id="ollamaSetup">
+        <summary>Ollama einrichten (für KI-Antworten)</summary>
+        <ol>
+          <li>Lade <strong>ollama.com</strong> herunter und installiere es</li>
+          <li>Öffne ein Terminal und tippe:<br><code>ollama pull llama3.2</code></li>
+          <li>Starte die App neu</li>
+        </ol>
+        <p style="margin-top:6px;font-size:10px;color:var(--secondary)">Retrieval (semantische Suche) funktioniert auch ohne Ollama.</p>
+      </details>
+    </div>
+
+    <div class="llm-section" id="llmSection">
+      <button class="btn-accent" id="loadLlmBtn">Sprachmodell laden (~800 MB)</button>
+      <div class="llm-note" id="llmNote">LLM optional — Retrieval funktioniert ohne</div>
+    </div>
+  </aside>
+
+  <main class="chat-panel">
+    <div class="chat-msgs" id="chatMsgs">
+      <div class="onboarding-state" id="chatEmpty">
+        <svg width="48" height="52" viewBox="0 0 24 26" fill="#004b23" style="opacity:.12;margin-bottom:16px"><path d="M12 1L3 5v8c0 5 3.8 9.5 9 11 5.2-1.5 9-6 9-11V5L12 1z"/></svg>
+        <div class="onboarding-title">Local Intelligence Vault</div>
+        <div class="onboarding-sub">Stelle deinen eigenen Dokumenten Fragen —<br>ohne Cloud, ohne Datenweitergabe.</div>
+        <div class="onboarding-steps">
+          <div class="onboarding-step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <div class="step-title" id="step1title">Dokument hinzufügen</div>
+              <div class="step-desc" id="step1desc">PDF, TXT oder MD — links in die Sidebar laden</div>
+            </div>
+          </div>
+          <div class="onboarding-step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <div class="step-title">Kurz warten (einmalig)</div>
+              <div class="step-desc">Das Tool indexiert das Dokument lokal auf deinem Gerät — dauert ~10 Sekunden</div>
+            </div>
+          </div>
+          <div class="onboarding-step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <div class="step-title">Frage stellen</div>
+              <div class="step-desc">"Was sind die wichtigsten Punkte?" — einfach unten eintippen</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="chat-input-row">
+      <textarea class="chat-input" id="chatInput" placeholder="Frage stellen..." rows="1" disabled></textarea>
+      <button class="send-btn" id="sendBtn" disabled>
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12zm0 0h7.5"/></svg>
+      </button>
+    </div>
+  </main>
+
+  <aside class="sources-panel">
+    <div class="panel-header">Quellen</div>
+    <div class="sources-list" id="sourcesList">
+      <div class="empty-state">
+        <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24" style="opacity:.3"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9z"/></svg>
+        <p>Noch keine Quellen</p>
+        <small>Erscheinen nach der ersten Antwort</small>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+const api = (window.parent !== window && window.parent.electronAPI) || window.electronAPI || null;
+const isElectron = !!api;
+
+const CHUNK_SIZE = 500;
+const CHUNK_OVERLAP = 50;
+const TOP_K = 5;
+const EMBED_MODEL = 'Xenova/all-MiniLM-L6-v2';
+const PYTHON_SERVER = 'http://localhost:8000';
+const OLLAMA_SERVER = 'http://localhost:11434';
+
+let mode = 'browser';
+let embedder = null;
+let llmEngine = null;
+let llmLoaded = false;
+let ollamaAvailable = false;
+let ollamaModel = 'llama3.2';
+let vault = [];
+let busy = false;
+let useOPFS = false;
+let modelFirstLoad = !localStorage.getItem('liv-model-loaded');
+
+async function initStorage() {
+  try {
+    const root = await navigator.storage.getDirectory();
+    await root.getDirectoryHandle('vault', { create: true });
+    useOPFS = true;
+  } catch { useOPFS = false; }
+}
+
+async function persistVault() {
+  const data = vault.map(d => ({
+    id: d.id, filename: d.filename,
+    chunks: d.chunks.map(c => ({ text: c.text, page: c.page, chunk_index: c.chunk_index, embedding: Array.from(c.embedding) }))
+  }));
+  try {
+    if (useOPFS) {
+      const root = await navigator.storage.getDirectory();
+      const dir = await root.getDirectoryHandle('vault', { create: true });
+      const fh = await dir.getFileHandle('index.json', { create: true });
+      const w = await fh.createWritable();
+      await w.write(JSON.stringify(data));
+      await w.close();
+    } else {
+      localStorage.setItem('vault_data', JSON.stringify(data));
+    }
+  } catch (e) { console.warn('persist error', e); }
+}
+
+async function restoreVault() {
+  try {
+    let raw = null;
+    if (useOPFS) {
+      const root = await navigator.storage.getDirectory();
+      const dir = await root.getDirectoryHandle('vault', { create: true });
+      try { const fh = await dir.getFileHandle('index.json'); raw = await (await fh.getFile()).text(); } catch {}
+    } else {
+      raw = localStorage.getItem('vault_data');
+    }
+    if (raw) {
+      const data = JSON.parse(raw);
+      vault = data.map(d => ({ id: d.id, filename: d.filename, chunks: d.chunks.map(c => ({ ...c, embedding: new Float32Array(c.embedding) })) }));
+    }
+  } catch { vault = []; }
+}
+
+function splitText(text) {
+  const seps = ['\n\n', '\n', '. ', ' '];
+  const chunks = [];
+  function doSplit(t, si = 0) {
+    if (t.trim().length < 50) return;
+    if (t.length <= CHUNK_SIZE || si >= seps.length) { if (t.trim().length >= 50) chunks.push(t.trim()); return; }
+    const sep = seps[si];
+    const parts = t.split(sep);
+    let cur = '';
+    for (const p of parts) {
+      const next = cur ? cur + sep + p : p;
+      if (next.length <= CHUNK_SIZE) { cur = next; continue; }
+      if (cur.trim().length >= 50) {
+        if (cur.length <= CHUNK_SIZE) chunks.push(cur.trim()); else doSplit(cur, si + 1);
+        const ws = cur.split(' ');
+        const ov = ws.slice(-Math.ceil(CHUNK_OVERLAP / 5)).join(' ');
+        cur = ov ? ov + sep + p : p;
+      } else { cur = p; }
+    }
+    if (cur.trim().length >= 50) { if (cur.length <= CHUNK_SIZE) chunks.push(cur.trim()); else doSplit(cur, si + 1); }
+  }
+  doSplit(text);
+  return chunks;
+}
+
+async function initEmbedder() {
+  if (embedder) return;
+  if (modelFirstLoad) {
+    document.getElementById('model-loading-overlay').style.display = 'flex';
+  }
+  try {
+    const { pipeline } = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js');
+    embedder = await pipeline('feature-extraction', EMBED_MODEL, {
+      quantized: true,
+      progress_callback: modelFirstLoad ? (p) => {
+        if (p.status === 'progress' && p.progress != null) {
+          document.getElementById('mlBar').style.width = Math.round(p.progress) + '%';
+        }
+      } : undefined
+    });
+    if (modelFirstLoad) {
+      localStorage.setItem('liv-model-loaded', '1');
+      modelFirstLoad = false;
+      document.getElementById('model-loading-overlay').style.display = 'none';
+    }
+    toast('KI-Modell bereit');
+  } catch (e) {
+    document.getElementById('model-loading-overlay').style.display = 'none';
+    document.getElementById('cdn-error-overlay').style.display = 'flex';
+    throw e;
+  }
+}
+
+async function embed(text) {
+  await initEmbedder();
+  const out = await embedder(text, { pooling: 'mean', normalize: true });
+  return new Float32Array(out.data);
+}
+
+function cosine(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb) + 1e-8);
+}
+
+function search(qEmb, k = TOP_K) {
+  const res = [];
+  for (const doc of vault) {
+    for (const c of doc.chunks) {
+      if (!c.embedding) continue;
+      res.push({ ...c, filename: doc.filename, score: cosine(qEmb, c.embedding) });
+    }
+  }
+  return res.sort((a, b) => b.score - a.score).slice(0, k);
+}
+
+async function parsePDF(file) {
+  const { getDocument, GlobalWorkerOptions } = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs');
+  GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
+  const pdf = await getDocument({ data: await file.arrayBuffer() }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const pg = await pdf.getPage(i);
+    const content = await pg.getTextContent();
+    pages.push({ page: i, text: content.items.map(x => x.str).join(' ') });
+  }
+  return pages;
+}
+
+async function ingest(file) {
+  setBar(true, `${file.name} — lese Text...`, 5);
+  let pages;
+  if (file.name.toLowerCase().endsWith('.pdf')) {
+    pages = await parsePDF(file);
+  } else {
+    pages = [{ page: 1, text: await file.text() }];
+  }
+  setBar(true, `${file.name} — chunking...`, 20);
+  const allChunks = [];
+  for (const { page, text } of pages) {
+    const texts = splitText(text);
+    texts.forEach((t, i) => allChunks.push({ text: t, page, chunk_index: i }));
+  }
+  for (let i = 0; i < allChunks.length; i++) {
+    setBar(true, `${file.name} — embedding ${i + 1}/${allChunks.length}...`, 20 + Math.floor(i / allChunks.length * 75));
+    allChunks[i].embedding = await embed(allChunks[i].text);
+  }
+  setBar(true, `${file.name} — speichere...`, 97);
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  vault.push({ id, filename: file.name, chunks: allChunks });
+  await persistVault();
+  setBar(false);
+  renderDocs();
+  enableChat();
+  toast(`${file.name} indexiert — ${allChunks.length} Chunks`);
+}
+
+async function openNativeFiles() {
+  if (!api) return;
+  const files = await api.openFiles();
+  for (const f of files) {
+    if (busy) break;
+    const bytes = Uint8Array.from(atob(f.data), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: f.mimeType });
+    const file = new File([blob], f.name, { type: f.mimeType });
+    await ingest(file);
+  }
+}
+
+async function generateWithOllama(context, question) {
+  const prompt = `Du bist ein hilfreicher Assistent. Beantworte die Frage NUR basierend auf dem gegebenen Kontext. Falls die Antwort nicht im Kontext steht, sage das ehrlich.\n\nKontext:\n${context}\n\nFrage: ${question}\n\nAntwort:`;
+  const r = await fetch(`${OLLAMA_SERVER}/api/generate`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: ollamaModel, prompt, stream: false })
+  });
+  if (!r.ok) throw new Error('Ollama-Fehler: ' + r.status);
+  const data = await r.json();
+  return data.response;
+}
+
+async function generateWithWebLLM(context, question) {
+  if (!llmLoaded) return null;
+  const prompt = `Du bist ein hilfreicher Assistent. Beantworte die Frage NUR basierend auf dem gegebenen Kontext. Falls die Antwort nicht im Kontext steht, sage das ehrlich.\n\nKontext:\n${context}\n\nFrage: ${question}\n\nAntwort:`;
+  const r = await llmEngine.chat.completions.create({ messages: [{ role: 'user', content: prompt }], temperature: 0.1, max_tokens: 512 });
+  return r.choices[0].message.content;
+}
+
+async function detectMode() {
+  if (isElectron) {
+    setBadge('desktop', 'DESKTOP MODE');
+    try {
+      const r = await fetch(`${OLLAMA_SERVER}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      if (r.ok) {
+        const data = await r.json();
+        const models = (data.models || []).map(m => m.name);
+        ollamaAvailable = true;
+        ollamaModel = models.find(m => m.includes('llama')) || models[0] || 'llama3.2';
+        setOllamaStatus(true, ollamaModel);
+      } else {
+        setOllamaStatus(false, null);
+      }
+    } catch {
+      setOllamaStatus(false, null);
+    }
+  } else {
+    try {
+      const r = await fetch(`${PYTHON_SERVER}/health`, { signal: AbortSignal.timeout(2000) });
+      if (r.ok) {
+        mode = 'enhanced';
+        setBadge('browser', 'ENHANCED MODE — LOCAL SERVER');
+        document.getElementById('llmSection').style.display = 'none';
+        toast('Python-Backend erkannt — Enhanced Mode');
+      }
+    } catch {}
+  }
+}
+
+async function query(question) {
+  if (mode === 'enhanced') {
+    const r = await fetch(`${PYTHON_SERVER}/query`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: question, k: TOP_K })
+    });
+    return await r.json();
+  }
+  const qEmb = await embed(question);
+  const sources = search(qEmb);
+  if (!sources.length) return { answer: 'Keine relevanten Dokumente gefunden.', sources: [] };
+  const context = sources.map((s, i) => `[${i + 1}] ${s.text}`).join('\n\n');
+
+  let answer = null;
+  if (ollamaAvailable) {
+    try { answer = await generateWithOllama(context, question); } catch (e) { console.warn('Ollama-Fehler:', e.message); }
+  } else if (llmLoaded) {
+    answer = await generateWithWebLLM(context, question);
+  }
+
+  if (!answer) {
+    answer = `Relevante Textstellen zu "${question}":\n\n` +
+      sources.map((s, i) => `[${i + 1}] ${s.text.slice(0, 250)}...\n   — ${s.filename}, S. ${s.page}`).join('\n\n') +
+      (isElectron ? '\n\n_(Richte Ollama ein für vollständige KI-Antworten)_' : '\n\n_(Lade das Sprachmodell für vollständige Antworten)_');
+  }
+  return { answer, sources };
+}
+
+function setBadge(cls, text) {
+  const b = document.getElementById('statusBadge');
+  b.className = 'status-badge ' + cls;
+  document.getElementById('statusText').textContent = text;
+}
+
+function setOllamaStatus(available, modelName) {
+  const dot = document.getElementById('ollamaDot');
+  const text = document.getElementById('ollamaStatusText');
+  const setup = document.getElementById('ollamaSetup');
+  dot.className = 'ollama-dot ' + (available ? 'ok' : '');
+  if (available) {
+    text.textContent = 'Ollama aktiv — ' + modelName;
+    setup.style.display = 'none';
+    ollamaAvailable = true;
+  } else {
+    text.textContent = 'Ollama nicht gefunden';
+    setup.style.display = 'block';
+  }
+}
+
+function setBar(show, label = '', pct = 0) {
+  const el = document.getElementById('ingestBar');
+  el.style.display = show ? 'block' : 'none';
+  if (show) {
+    document.getElementById('ingestLabel').textContent = label;
+    document.getElementById('barFill').style.width = pct + '%';
+  }
+}
+
+function renderDocs() {
+  const list = document.getElementById('docList');
+  if (!vault.length) {
+    list.innerHTML = `<div class="empty-state"><p>Vault leer</p><small>Dokument hinzufügen</small></div>`;
+    return;
+  }
+  list.innerHTML = vault.map(d => `
+    <div class="doc-item">
+      <div class="doc-icon">${d.filename.split('.').pop().toUpperCase().slice(0, 3)}</div>
+      <div>
+        <div class="doc-name" title="${esc(d.filename)}">${esc(d.filename)}</div>
+        <div class="doc-meta">${d.chunks.length} Chunks</div>
+      </div>
+      <button class="doc-del" data-id="${d.id}" title="Löschen">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+  `).join('');
+  list.querySelectorAll('.doc-del').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      vault = vault.filter(d => d.id !== btn.dataset.id);
+      await persistVault();
+      renderDocs();
+      if (!vault.length) disableChat();
+      toast('Dokument entfernt');
+    });
+  });
+}
+
+function enableChat() {
+  document.getElementById('chatInput').disabled = false;
+  document.getElementById('sendBtn').disabled = false;
+  const e = document.getElementById('chatEmpty');
+  if (e) e.remove();
+}
+
+function disableChat() {
+  document.getElementById('chatInput').disabled = true;
+  document.getElementById('sendBtn').disabled = true;
+}
+
+function addMsg(role, text, sources = []) {
+  const wrap = document.createElement('div');
+  wrap.className = `msg-wrap ${role}`;
+  const initials = role === 'user' ? 'Du' : 'KI';
+  const html = esc(text).replace(/\[(\d+)\]/g, '<span class="src-ref">[$1]</span>').replace(/\n/g, '<br>');
+  wrap.innerHTML = `<div class="msg-avatar">${initials}</div><div class="msg-bubble">${html}</div>`;
+  document.getElementById('chatMsgs').appendChild(wrap);
+  document.getElementById('chatMsgs').scrollTop = 99999;
+  if (sources.length) renderSources(sources);
+}
+
+function addThinking() {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap assistant';
+  wrap.id = 'thinking';
+  wrap.innerHTML = `<div class="msg-avatar">KI</div><div class="msg-bubble"><div class="dots-wrap"><span></span><span></span><span></span></div></div>`;
+  document.getElementById('chatMsgs').appendChild(wrap);
+  document.getElementById('chatMsgs').scrollTop = 99999;
+}
+
+function renderSources(sources) {
+  document.getElementById('sourcesList').innerHTML = sources.map((s, i) => `
+    <div class="src-card">
+      <div class="src-card-head">
+        <div class="src-num">${i + 1}</div>
+        <div class="src-file" title="${esc(s.filename || s.source || '')}">${esc(s.filename || s.source || '')}</div>
+        ${s.page ? `<div class="src-page">S.${s.page}</div>` : ''}
+      </div>
+      <div class="src-text">${esc(s.text.slice(0, 300))}${s.text.length > 300 ? '…' : ''}</div>
+      ${s.score != null ? `<div class="src-score">Relevanz: ${Math.round(s.score * 100)}%</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+async function send() {
+  const inp = document.getElementById('chatInput');
+  const q = inp.value.trim();
+  if (!q || busy) return;
+  inp.value = '';
+  inp.style.height = 'auto';
+  busy = true;
+  document.getElementById('sendBtn').disabled = true;
+  addMsg('user', q);
+  addThinking();
+  try {
+    const { answer, sources } = await query(q);
+    document.getElementById('thinking')?.remove();
+    addMsg('assistant', answer, sources);
+  } catch (e) {
+    document.getElementById('thinking')?.remove();
+    addMsg('assistant', 'Fehler: ' + e.message);
+  } finally {
+    busy = false;
+    document.getElementById('sendBtn').disabled = false;
+  }
+}
+
+document.getElementById('loadLlmBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('loadLlmBtn');
+  const note = document.getElementById('llmNote');
+  btn.disabled = true;
+  note.textContent = 'Initialisiere WebLLM...';
+  try {
+    const { CreateMLCEngine } = await import('https://esm.sh/@mlc-ai/web-llm@0.2.73');
+    llmEngine = await CreateMLCEngine('Llama-3.2-1B-Instruct-q4f32_1-MLC', {
+      initProgressCallback: p => { note.textContent = `Lade: ${Math.round(p.progress * 100)}%`; }
+    });
+    llmLoaded = true;
+    btn.textContent = 'Sprachmodell geladen';
+    note.textContent = 'LLM aktiv — vollständige Antworten aktiviert';
+    toast('Sprachmodell geladen');
+  } catch (e) {
+    btn.disabled = false;
+    note.textContent = 'WebGPU nicht verfügbar. Desktop-Version mit Ollama nutzen.';
+  }
+});
+
+document.getElementById('sendBtn').addEventListener('click', send);
+document.getElementById('chatInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+document.getElementById('chatInput').addEventListener('input', function () {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+const zone = document.getElementById('uploadZone');
+const fi = document.getElementById('fileInput');
+zone.addEventListener('click', () => fi.click());
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+zone.addEventListener('drop', async e => {
+  e.preventDefault();
+  zone.classList.remove('drag');
+  for (const f of e.dataTransfer.files) { if (!busy) await ingest(f); }
+});
+fi.addEventListener('change', async () => {
+  for (const f of fi.files) { if (!busy) await ingest(f); }
+  fi.value = '';
+});
+
+(async () => {
+  await initStorage();
+  await restoreVault();
+  renderDocs();
+
+  if (isElectron) {
+    document.getElementById('btnOpenFiles').style.display = 'flex';
+    document.getElementById('llmSection').style.display = 'none';
+    document.getElementById('ollamaSection').style.display = 'block';
+    document.getElementById('step1title').textContent = 'Dateien öffnen';
+    document.getElementById('step1desc').textContent = 'Klicke "Dateien öffnen" oder ziehe Dokumente in die Sidebar';
+  }
+
+  if (vault.length) enableChat();
+  await detectMode();
+})();
+</script>
+</body>
+</html>
