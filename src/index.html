@@ -111,10 +111,10 @@
   <div id="update-banner">
     <div class="banner-text">
       <div class="banner-title" id="banner-title"></div>
-      <div class="banner-hint">Diese Meldung ist nur 3x wegklickbar, danach wird das Update durchgefuhrt.</div>
+      <div class="banner-hint">Diese Meldung ist nur 3x wegklickbar, danach wird das Update durchgeführt.</div>
     </div>
     <div class="banner-actions">
-      <button class="btn-later" id="btn-later" onclick="handleLater()">Spater</button>
+      <button class="btn-later" id="btn-later" onclick="handleLater()">Später</button>
       <button class="btn-update" onclick="handleUpdate()">Jetzt aktualisieren</button>
     </div>
   </div>
@@ -128,7 +128,7 @@
         <div id="progress-bar-bg"><div id="progress-bar-fill"></div></div>
       </div>
       <div id="download-error-msg">Download fehlgeschlagen — bitte erneut versuchen.</div>
-      <div id="install-msg">Installation lauft, App wird neu gestartet...</div>
+      <div id="install-msg">Installation läuft, App wird neu gestartet...</div>
       <div class="dialog-actions" id="dialog-actions">
         <button class="btn-force-update" id="btn-force-update" onclick="handleForceUpdate()">Jetzt aktualisieren</button>
         <button class="btn-quit" onclick="handleQuit()">Programm schliessen</button>
@@ -146,7 +146,7 @@
         <div id="status-progress-bar-bg"><div id="status-progress-bar-fill"></div></div>
       </div>
       <div id="status-error-msg" style="display:none;color:#dc2626;font-size:12px;margin-bottom:14px">Download fehlgeschlagen.</div>
-      <div id="status-install-msg" style="display:none;color:#16a34a;font-size:13px;margin-bottom:14px;font-weight:600">Installation lauft, App wird neu gestartet...</div>
+      <div id="status-install-msg" style="display:none;color:#16a34a;font-size:13px;margin-bottom:14px;font-weight:600">Installation läuft, App wird neu gestartet...</div>
       <div id="status-actions" style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
         <button class="btn-force-update" id="btn-status-update" onclick="handleStatusUpdate()" style="display:none">Jetzt aktualisieren</button>
         <button class="btn-close-dialog" onclick="document.getElementById('update-status-overlay').style.display='none'">Schliessen</button>
@@ -213,8 +213,8 @@
 
     function showBanner(version, dismissCount) {
       pendingVersion = version;
-      document.getElementById('banner-title').textContent = 'Neue Version ' + version + ' verfugbar';
-      document.getElementById('btn-later').textContent = 'Spater (' + (3 - dismissCount) + 'x)';
+      document.getElementById('banner-title').textContent = 'Neue Version ' + version + ' verfügbar';
+      document.getElementById('btn-later').textContent = 'Später (' + (3 - dismissCount) + 'x)';
       document.getElementById('update-banner').style.display = 'flex';
     }
 
@@ -261,22 +261,22 @@
       document.getElementById('status-actions').style.display = 'flex';
 
       if (!window.electronAPI) {
-        document.getElementById('status-title').textContent = 'Nicht verfugbar';
-        document.getElementById('status-message').textContent = 'Update-Prufung nur in der Desktop-App verfugbar.';
+        document.getElementById('status-title').textContent = 'Nicht verfügbar';
+        document.getElementById('status-message').textContent = 'Update-Prüfung nur in der Desktop-App verfügbar.';
         return;
       }
 
       const result = await window.electronAPI.checkForUpdates();
       if (result.updateAvailable) {
-        document.getElementById('status-title').textContent = 'Update verfugbar';
-        document.getElementById('status-message').textContent = 'Version ' + result.version + ' ist verfugbar (aktuell: ' + result.currentVersion + ').';
+        document.getElementById('status-title').textContent = 'Update verfügbar';
+        document.getElementById('status-message').textContent = 'Version ' + result.version + ' ist verfügbar (aktuell: ' + result.currentVersion + ').';
         document.getElementById('btn-status-update').style.display = 'inline-block';
         pendingVersion = result.version;
       } else if (result.error) {
         document.getElementById('status-title').textContent = 'Fehler';
-        document.getElementById('status-message').textContent = 'Update-Prufung fehlgeschlagen. Internetverbindung prufen.';
+        document.getElementById('status-message').textContent = 'Update-Prüfung fehlgeschlagen. Internetverbindung prüfen.';
       } else {
-        document.getElementById('status-title').textContent = 'Kein Update verfugbar';
+        document.getElementById('status-title').textContent = 'Kein Update verfügbar';
         document.getElementById('status-message').textContent = 'Sie verwenden die neueste Version (' + (result.currentVersion || '0.1.0') + ').';
       }
     }
