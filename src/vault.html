@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Local Intelligence Vault</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net esm.sh blob:; connect-src cdn.jsdelivr.net esm.sh *.huggingface.co *.hf.co http://localhost:11434; style-src 'self' 'unsafe-inline'; worker-src blob: cdn.jsdelivr.net esm.sh; child-src blob:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net esm.sh blob:; connect-src cdn.jsdelivr.net esm.sh *.huggingface.co *.hf.co http://localhost:11434 https://tessdata.projectnaptha.com; style-src 'self' 'unsafe-inline'; worker-src blob: cdn.jsdelivr.net esm.sh; child-src blob:;">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
 <style>
 :root{--navy:#1a3a5c;--navy-light:#2a5a8c;--navy-50:rgba(26,58,92,0.06);--border:#e5e5e5;--secondary:#666}
@@ -142,6 +142,10 @@ body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#fff;color:
     <span class="status-dot"></span>
     <span id="statusText">BROWSER MODE</span>
   </div>
+  <div id="offlineBadge" style="display:none;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;letter-spacing:.04em;text-transform:uppercase;background:#fee2e2;color:#991b1b;margin-left:8px" title="Kein Internet — bereits geladene Modelle funktionieren weiterhin">
+    <span style="width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2s infinite;display:inline-block"></span>
+    Offline
+  </div>
 </nav>
 
 <div class="vault-layout">
@@ -266,6 +270,7 @@ let vault = [];
 let busy = false;
 let useOPFS = false;
 let modelFirstLoad = !localStorage.getItem('liv-model-loaded');
+let _ocrWorker = null;
 
 async function initStorage() {
   try {
@@ -336,6 +341,24 @@ function splitText(text) {
   return chunks;
 }
 
+async function renderPageToCanvas(pdfPage) {
+  const scale = 2;
+  const viewport = pdfPage.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await pdfPage.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  return canvas;
+}
+
+async function getOCRWorker() {
+  if (_ocrWorker) return _ocrWorker;
+  toast('OCR-Engine wird geladen...');
+  const { createWorker } = await import('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js');
+  _ocrWorker = await createWorker('deu+eng');
+  return _ocrWorker;
+}
+
 async function initEmbedder() {
   if (embedder) return;
   if (modelFirstLoad) {
@@ -391,11 +414,33 @@ async function parsePDF(file) {
   const { getDocument, GlobalWorkerOptions } = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs');
   GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
   const pdf = await getDocument({ data: await file.arrayBuffer() }).promise;
-  const pages = [];
+  const rawPages = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const pg = await pdf.getPage(i);
     const content = await pg.getTextContent();
-    pages.push({ page: i, text: content.items.map(x => x.str).join(' ') });
+    const text = content.items.map(x => x.str).join(' ').trim();
+    rawPages.push({ page: i, text, pdfPage: pg });
+  }
+
+  const needsOCR = rawPages.some(p => p.text.length < 30);
+  if (!needsOCR) return rawPages.map(({ page, text }) => ({ page, text }));
+
+  const pages = [];
+  for (let i = 0; i < rawPages.length; i++) {
+    const { page, text, pdfPage } = rawPages[i];
+    if (text.length >= 30) {
+      pages.push({ page, text });
+    } else {
+      setBar(true, `${file.name} — OCR S.${page}/${pdf.numPages}...`, 5 + Math.floor(i / rawPages.length * 13));
+      try {
+        const worker = await getOCRWorker();
+        const canvas = await renderPageToCanvas(pdfPage);
+        const { data: { text: ocrText } } = await worker.recognize(canvas);
+        pages.push({ page, text: ocrText });
+      } catch {
+        pages.push({ page, text: '' });
+      }
+    }
   }
   return pages;
 }
@@ -716,6 +761,14 @@ fi.addEventListener('change', async () => {
 
   if (vault.length) enableChat();
   await detectMode();
+
+  function updateOfflineStatus() {
+    const badge = document.getElementById('offlineBadge');
+    if (badge) badge.style.display = navigator.onLine ? 'none' : 'flex';
+  }
+  window.addEventListener('online', updateOfflineStatus);
+  window.addEventListener('offline', updateOfflineStatus);
+  updateOfflineStatus();
 })();
 </script>
 </body>
