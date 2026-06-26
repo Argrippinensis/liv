@@ -459,9 +459,15 @@ async function ingest(file) {
     const texts = splitText(text);
     texts.forEach((t, i) => allChunks.push({ text: t, page, chunk_index: i }));
   }
-  for (let i = 0; i < allChunks.length; i++) {
-    setBar(true, `${file.name} — embedding ${i + 1}/${allChunks.length}...`, 20 + Math.floor(i / allChunks.length * 75));
-    allChunks[i].embedding = await embed(allChunks[i].text);
+  const BATCH = 8;
+  await initEmbedder();
+  for (let i = 0; i < allChunks.length; i += BATCH) {
+    const batch = allChunks.slice(i, i + BATCH);
+    setBar(true, `${file.name} — embedding ${i + 1}–${Math.min(i + BATCH, allChunks.length)}/${allChunks.length}...`,
+      20 + Math.floor(i / allChunks.length * 75));
+    const out = await embedder(batch.map(c => c.text), { pooling: 'mean', normalize: true });
+    const dim = out.dims[out.dims.length - 1];
+    batch.forEach((c, j) => { c.embedding = new Float32Array(out.data.slice(j * dim, (j + 1) * dim)); });
   }
   setBar(true, `${file.name} — speichere...`, 97);
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -485,23 +491,44 @@ async function openNativeFiles() {
   }
 }
 
-async function generateWithOllama(context, question) {
+async function generateWithOllama(context, question, onToken) {
   const prompt = `Du bist ein hilfreicher Assistent. Beantworte die Frage NUR basierend auf dem gegebenen Kontext. Falls die Antwort nicht im Kontext steht, sage das ehrlich.\n\nKontext:\n${context}\n\nFrage: ${question}\n\nAntwort:`;
   const r = await fetch(`${OLLAMA_SERVER}/api/generate`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ model: ollamaModel, prompt, stream: false })
+    body: JSON.stringify({ model: ollamaModel, prompt, stream: true })
   });
   if (!r.ok) throw new Error('Ollama-Fehler: ' + r.status);
-  const data = await r.json();
-  return data.response;
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    for (const line of decoder.decode(value, { stream: true }).split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const data = JSON.parse(line);
+        if (data.response) { fullText += data.response; onToken(fullText); }
+      } catch {}
+    }
+  }
+  return fullText;
 }
 
-async function generateWithWebLLM(context, question) {
+async function generateWithWebLLM(context, question, onToken) {
   if (!llmLoaded) return null;
   const prompt = `Du bist ein hilfreicher Assistent. Beantworte die Frage NUR basierend auf dem gegebenen Kontext. Falls die Antwort nicht im Kontext steht, sage das ehrlich.\n\nKontext:\n${context}\n\nFrage: ${question}\n\nAntwort:`;
-  const r = await llmEngine.chat.completions.create({ messages: [{ role: 'user', content: prompt }], temperature: 0.1, max_tokens: 512 });
-  return r.choices[0].message.content;
+  const stream = await llmEngine.chat.completions.create({
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.1, max_tokens: 512, stream: true
+  });
+  let fullText = '';
+  for await (const chunk of stream) {
+    const token = chunk.choices[0]?.delta?.content || '';
+    if (token) { fullText += token; onToken(fullText); }
+  }
+  return fullText;
 }
 
 async function detectMode() {
@@ -653,6 +680,27 @@ function addThinking() {
   document.getElementById('chatMsgs').scrollTop = 99999;
 }
 
+function addStreamingBubble() {
+  document.getElementById('thinking')?.remove();
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap assistant';
+  const avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  avatar.textContent = 'KI';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  wrap.appendChild(avatar);
+  wrap.appendChild(bubble);
+  document.getElementById('chatMsgs').appendChild(wrap);
+  document.getElementById('chatMsgs').scrollTop = 99999;
+  return bubble;
+}
+
+function updateStreamingBubble(bubble, fullText) {
+  bubble.innerHTML = esc(fullText).replace(/\[(\d+)\]/g, '<span class="src-ref">[$1]</span>').replace(/\n/g, '<br>');
+  document.getElementById('chatMsgs').scrollTop = 99999;
+}
+
 function renderSources(sources) {
   document.getElementById('sourcesList').innerHTML = sources.map((s, i) => `
     <div class="src-card">
@@ -690,9 +738,36 @@ async function send() {
   addMsg('user', q);
   addThinking();
   try {
-    const { answer, sources } = await query(q);
-    document.getElementById('thinking')?.remove();
-    addMsg('assistant', answer, sources);
+    if (mode === 'enhanced') {
+      const { answer, sources } = await query(q);
+      document.getElementById('thinking')?.remove();
+      addMsg('assistant', answer, sources);
+    } else {
+      const qEmb = await embed(q);
+      const sources = search(qEmb);
+      if (!sources.length) {
+        document.getElementById('thinking')?.remove();
+        addMsg('assistant', 'Keine relevanten Dokumente gefunden.', []);
+      } else {
+        const context = sources.map((s, i) => `[${i + 1}] ${s.text}`).join('\n\n');
+        const bubble = addStreamingBubble();
+        let answer = '';
+        if (ollamaAvailable) {
+          try {
+            answer = await generateWithOllama(context, q, full => updateStreamingBubble(bubble, full));
+          } catch (e) { console.warn('Ollama-Fehler:', e.message); }
+        } else if (llmLoaded) {
+          answer = await generateWithWebLLM(context, q, full => updateStreamingBubble(bubble, full));
+        }
+        if (!answer) {
+          answer = `Relevante Textstellen zu "${q}":\n\n` +
+            sources.map((s, i) => `[${i + 1}] ${s.text.slice(0, 250)}...\n   — ${s.filename}, S. ${s.page}`).join('\n\n') +
+            (isElectron ? '\n\n_(Richte Ollama ein für vollständige KI-Antworten)_' : '\n\n_(Lade das Sprachmodell für vollständige Antworten)_');
+          updateStreamingBubble(bubble, answer);
+        }
+        renderSources(sources);
+      }
+    }
   } catch (e) {
     document.getElementById('thinking')?.remove();
     addMsg('assistant', 'Fehler: ' + e.message);
@@ -761,6 +836,11 @@ fi.addEventListener('change', async () => {
 
   if (vault.length) enableChat();
   await detectMode();
+
+  // Warm up embedder in background if already cached — eliminates cold-start on first query
+  if (isElectron && !modelFirstLoad) {
+    setTimeout(() => initEmbedder().catch(() => {}), 1500);
+  }
 
   function updateOfflineStatus() {
     const badge = document.getElementById('offlineBadge');
